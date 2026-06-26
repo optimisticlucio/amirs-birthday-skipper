@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub struct Player {
     pub id: u16, // We got like, 25 players tops. This is beyond overkill as is.
     pub name: String,
+    pub presentation_title: String,
     pub pronouns: Pronouns,
 }
 
@@ -19,8 +20,13 @@ pub struct PlayerList {
 }
 
 impl PlayerList {
-    /// Adds a new player to the list, with a given name and pronoun set.
-    pub fn new_player(&mut self, name: String, pronouns: Pronouns) -> Player {
+    /// Adds a new player to the list, with a given name, presentation name, and pronoun set.
+    pub fn new_player(
+        &mut self,
+        name: String,
+        presentation_title: String,
+        pronouns: Pronouns,
+    ) -> Player {
         let mut id;
 
         // Get an ID that isn't in the list yet.
@@ -31,7 +37,12 @@ impl PlayerList {
             }
         }
 
-        let new_player = Player { id, name, pronouns };
+        let new_player = Player {
+            id,
+            name,
+            presentation_title,
+            pronouns,
+        };
 
         self.players.insert(id, new_player.clone());
 
