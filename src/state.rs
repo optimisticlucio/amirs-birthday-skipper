@@ -1,6 +1,7 @@
 use tokio::sync::broadcast;
 
 use crate::{Player, player::PlayerList};
+use serde::Serialize;
 
 #[derive(Default, Clone)]
 pub struct ServerState {
@@ -23,9 +24,10 @@ struct GameInfo {
     pub broadcast_channel: broadcast::Sender<BroadcastMessage>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Default, Serialize)]
 enum GamePhase {
     /// The game hasn't started yet and players are logging in.
+    #[default]
     Setup,
     /// The game is fully over and we're letting people look at the results.
     Results,
@@ -33,11 +35,32 @@ enum GamePhase {
     SelectPresentor,
     /// The presentor is currently presenting their presentation.
     CurrentlyPresenting {
-        presentor_id: u16,
+        presentor: Player,
         presentation_start_time: chrono::DateTime<chrono::Utc>,
     },
     /// The presentor has finished presenting and people are voting on their performance.
-    PostPresenting { presentor_id: u16 },
+    PostPresenting { presentor: Player },
 }
 
-enum BroadcastMessage {}
+impl GameInfo {
+    fn new(session_name: String, host: Player) -> Self {
+        let players = PlayerList::default();
+
+        let (broadcast_channel, _reciever_channel) = broadcast::channel(16);
+
+        Self {
+            session_name,
+            players,
+            host,
+            players_who_havent_presented: Vec::new(),
+            current_phase: GamePhase::default(),
+            broadcast_channel,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+enum BroadcastMessage {
+    /// Notifies the client that we have changed the game state.
+    SwitchPhase(GamePhase),
+}

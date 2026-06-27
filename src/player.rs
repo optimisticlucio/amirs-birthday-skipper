@@ -1,9 +1,10 @@
 use rand::RngExt;
+use serde::Serialize;
 
 use crate::utils::Pronouns;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 /// Represents an individual, logged-in player in the current game.
 pub struct Player {
     pub id: u16, // We got like, 25 players tops. This is beyond overkill as is.
