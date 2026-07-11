@@ -5,11 +5,11 @@ use serde::Serialize;
 
 #[derive(Default, Clone)]
 pub struct ServerState {
-    active_game: Option<GameInfo>,
+    pub active_game: Option<GameInfo>,
 }
 
 #[derive(Clone)]
-struct GameInfo {
+pub struct GameInfo {
     /// All the logged players in the current game, including the host.
     pub players: PlayerList,
     /// The player who is hosting the current game.
@@ -21,11 +21,11 @@ struct GameInfo {
     /// What phase we're currently in.
     pub current_phase: GamePhase,
     /// Sends updates from other threads about when we should update the clients' presented data. Every websocket should be subscribed to this.
-    pub broadcast_channel: broadcast::Sender<BroadcastMessage>,
+    pub broadcast_channel: broadcast::Sender<ServerMessage>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
-enum GamePhase {
+pub enum GamePhase {
     /// The game hasn't started yet and players are logging in.
     #[default]
     Setup,
@@ -40,10 +40,12 @@ enum GamePhase {
     },
     /// The presentor has finished presenting and people are voting on their performance.
     PostPresenting { presentor: Player },
+    /// The presentation night has ended! Congratulations everyone!
+    GameOver,
 }
 
 impl GameInfo {
-    fn new(session_name: String, host: Player) -> Self {
+    pub fn new(session_name: String, host: Player) -> Self {
         let players = PlayerList::default();
 
         let (broadcast_channel, _reciever_channel) = broadcast::channel(16);
@@ -59,8 +61,12 @@ impl GameInfo {
     }
 }
 
-#[derive(Clone, Serialize)]
-enum BroadcastMessage {
+#[derive(Clone, Serialize, Debug)]
+pub enum ServerMessage {
     /// Notifies the client that we have changed the game state.
     SwitchPhase(GamePhase),
+    /// Not the user's fault; the message was invalid.
+    InvalidJSON,
+    /// The user's fault; the intent was invalid.
+    InvalidRequest { reason: String },
 }
