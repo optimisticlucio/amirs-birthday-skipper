@@ -4,13 +4,32 @@ use serde::Serialize;
 use crate::utils::Pronouns;
 use std::collections::HashMap;
 
+pub type PlayerId = u16; // We got like, 25 players tops. This is beyond overkill as is.
+
 #[derive(Debug, Clone, Serialize)]
 /// Represents an individual, logged-in player in the current game.
 pub struct Player {
-    pub id: u16, // We got like, 25 players tops. This is beyond overkill as is.
+    pub id: PlayerId,
     pub name: String,
     pub presentation_title: String,
     pub pronouns: Pronouns,
+}
+
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id)
+    }
+}
+
+impl Default for Player {
+    fn default() -> Self {
+        Player {
+            id: 0,
+            name: "Default Player".into(),
+            presentation_title: "The Wonders of Debugging".into(),
+            pronouns: Pronouns::Mixed,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -51,7 +70,15 @@ impl PlayerList {
     }
 
     /// Returns a player by an ID if they exist. If they do not, returns None.
-    pub fn get_player_by_id(&self, id: &u16) -> Option<&Player> {
+    pub fn get_player_by_id(&self, id: &PlayerId) -> Option<&Player> {
         self.players.get(id)
+    }
+
+    /// Get a vec of all players in the game.
+    pub fn into_vec(&self) -> Vec<Player> {
+        self.players
+            .iter()
+            .map(|(_id, player)| player.clone())
+            .collect()
     }
 }

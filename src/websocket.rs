@@ -65,18 +65,18 @@ async fn handle_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex<Serv
                             break;
                         }
 
-                        let host: Player = crate::Player {
-                            id: 0,
-                            name: host_name,
-                            presentation_title: "Host Isn't Presenting".to_string(),
-                            pronouns: host_pronouns,
-                        };
+                        let game_info: GameInfo =
+                            GameInfo::new(session_name, host_name, host_pronouns);
 
-                        let game_info: GameInfo = GameInfo::new(session_name, host);
+                        let switch_phase_message = game_info.get_public_game_phase();
 
                         server_state.active_game = Some(game_info);
 
-                        // TODO: Update user that the game started.
+                        send_message_to_user(
+                            &mut socket,
+                            &ServerMessage::SwitchPhase(switch_phase_message),
+                        )
+                        .await;
                     }
                 }
             }

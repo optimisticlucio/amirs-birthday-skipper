@@ -1,6 +1,7 @@
 use tokio::sync::broadcast;
 
-use crate::{Player, player::PlayerList};
+use crate::player::{Player, PlayerId, PlayerList};
+use crate::utils::Pronouns;
 use serde::Serialize;
 
 #[derive(Default, Clone)]
@@ -8,14 +9,24 @@ pub struct ServerState {
     pub active_game: Option<GameInfo>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct Presentation {
+    presenter_id: PlayerId,
+    name: String,
+    start_time: chrono::DateTime<chrono::Utc>,
+    end_time: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Clone)]
 pub struct GameInfo {
     /// All the logged players in the current game, including the host.
     pub players: PlayerList,
-    /// The player who is hosting the current game.
-    pub host: Player,
-    /// A list of players who haven't presented yet.
-    pub players_who_havent_presented: Vec<Player>,
+    /// The ID of the player who is hosting the current game.
+    pub host_id: PlayerId,
+    /// A list of IDs for the players who haven't presented yet.
+    pub players_who_havent_presented: Vec<PlayerId>,
+    /// A list of all presentations complete until now, along with their data.
+    pub complete_presentations: Vec<Presentation>,
     /// The title of the current game, for fun.
     pub session_name: String,
     /// What phase we're currently in.
@@ -29,34 +40,83 @@ pub enum GamePhase {
     /// The game hasn't started yet and players are logging in.
     #[default]
     Setup,
+    /// The host needs to select who will do the next presentation.
+    SelectPresenter,
+    /// The presentor is currently presenting their presentation.
+    CurrentlyPresenting { current_presentation: Presentation },
     /// The game is fully over and we're letting people look at the results.
     Results,
-    /// The host needs to select who will do the next presentation.
-    SelectPresentor,
-    /// The presentor is currently presenting their presentation.
-    CurrentlyPresenting {
-        presentor: Player,
-        presentation_start_time: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+/// Same as GamePhase, but for when we send data to the users. They don't need to bother with IDs.
+pub enum PublicGamePhase {
+    Setup {
+        session_name: String,
+        connected_players: Vec<Player>,
     },
-    /// The presentor has finished presenting and people are voting on their performance.
-    PostPresenting { presentor: Player },
-    /// The presentation night has ended! Congratulations everyone!
-    GameOver,
+
+    SelectPresenter {
+        possible_presenters: Vec<Player>,
+    },
+
+    CurrentlyPresenting {
+        presentation: Presentation,
+    },
+
+    Results {
+        all_presentations: Vec<Presentation>,
+    },
 }
 
 impl GameInfo {
-    pub fn new(session_name: String, host: Player) -> Self {
-        let players = PlayerList::default();
+    pub fn new(session_name: String, host_name: String, host_pronouns: Pronouns) -> Self {
+        let mut players = PlayerList::default();
+        let host = players.new_player(host_name, "The Host's Presentation".into(), host_pronouns);
 
         let (broadcast_channel, _reciever_channel) = broadcast::channel(16);
 
         Self {
             session_name,
             players,
-            host,
+            host_id: host.id,
             players_who_havent_presented: Vec::new(),
+            complete_presentations: Vec::new(),
             current_phase: GamePhase::default(),
             broadcast_channel,
+        }
+    }
+
+    /// Returns a list of all the players who still need to do a presentation.
+    pub fn get_players_who_havent_presented(&self) -> Vec<Player> {
+        self.players_who_havent_presented
+            .iter()
+            .map(|player_id| {
+                self.players
+                    .get_player_by_id(player_id)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    pub fn get_public_game_phase(&self) -> PublicGamePhase {
+        match &self.current_phase {
+            GamePhase::Setup => PublicGamePhase::Setup {
+                session_name: self.session_name.clone(),
+                connected_players: self.players.into_vec(),
+            },
+            GamePhase::Results => PublicGamePhase::Results {
+                all_presentations: self.complete_presentations.clone(),
+            },
+            GamePhase::CurrentlyPresenting {
+                current_presentation,
+            } => PublicGamePhase::CurrentlyPresenting {
+                presentation: current_presentation.clone(),
+            },
+            GamePhase::SelectPresenter => PublicGamePhase::SelectPresenter {
+                possible_presenters: self.get_players_who_havent_presented(),
+            },
         }
     }
 }
@@ -64,9 +124,31 @@ impl GameInfo {
 #[derive(Clone, Serialize, Debug)]
 pub enum ServerMessage {
     /// Notifies the client that we have changed the game state.
-    SwitchPhase(GamePhase),
+    SwitchPhase(PublicGamePhase),
     /// Not the user's fault; the message was invalid.
     InvalidJSON,
     /// The user's fault; the intent was invalid.
     InvalidRequest { reason: String },
+}
+
+impl GamePhase {
+    /// Based on a given message from a user, return the new game state.
+    fn act(&self, game_info: &mut GameInfo) {
+        match self {
+            Self::Setup => {
+                todo!()
+            }
+            Self::SelectPresenter => {
+                todo!()
+            }
+            Self::CurrentlyPresenting {
+                current_presentation,
+            } => {
+                todo!()
+            }
+            Self::Results => {
+                todo!()
+            }
+        }
+    }
 }
