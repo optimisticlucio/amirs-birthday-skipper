@@ -119,6 +119,17 @@ impl GameInfo {
             },
         }
     }
+
+    // Does all the legwork to have the game be ready to play.
+    pub fn initiate_game(&mut self) {
+        self.players_who_havent_presented = self.players.get_all_ids();
+
+        // Remove host from list of presentors
+        self.players_who_havent_presented
+            .retain(|&id| id != self.host_id);
+
+        self.current_phase = GamePhase::SelectPresenter;
+    }
 }
 
 #[derive(Clone, Serialize, Debug)]

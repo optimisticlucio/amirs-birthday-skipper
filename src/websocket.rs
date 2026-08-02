@@ -20,20 +20,25 @@ pub async fn websocket_handler(
     cookie_jar: Cookies,
 ) -> impl IntoResponse {
     // Before we start the websocket upgrade, check if there's a login cookie.
-    let Some(this_user_id): Option<PlayerId> = cookie_jar.get("user_id").and_then(|cookie| cookie.value().parse().ok())
-    else 
-    {
+    let Some(this_user_id): Option<PlayerId> = cookie_jar
+        .get("user_id")
+        .and_then(|cookie| cookie.value().parse().ok())
+    else {
         return Redirect::to("/login").into_response();
     };
 
-
     // Finalize upgrading the connection and call the provided callback with the stream.
     ws.on_failed_upgrade(|error| eprintln!("[WEBSOCKET] Error upgrading websocket: {}", error))
-        .on_upgrade(move |socket| handle_user_socket(socket, server_state, cookie_jar, this_user_id)).into_response()
+        .on_upgrade(move |socket| handle_user_socket(socket, server_state, this_user_id))
+        .into_response()
 }
 
 /// Handles the messaging between a logged in user and the game. Assumes the user has already registered!
-async fn handle_user_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex<ServerState>>, cookie_jar: Cookies, user_id: PlayerId) {
+async fn handle_user_socket(
+    mut socket: WebSocket,
+    server_state_mutex: Arc<Mutex<ServerState>>,
+    user_id: PlayerId,
+) {
     // Returns `None` if the stream has closed.
     while let Some(msg) = socket.recv().await {
         if let Ok(msg) = msg {
@@ -53,41 +58,20 @@ async fn handle_user_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex
                 // This is a birthday gift server, we're not dealing with large-scale DDOS attacks
                 // where this shit matters.
 
-                let mut server_state_lock = server_state_mutex.lock().await;
+                let mut server_state = server_state_mutex.lock().await;
 
-                let server_state = server_state_lock.deref_mut();
+                // If you entered this socket, I am hoping to GOD that the game is ongoing. If it isn't, what are you doing here.
+
+                let Some(active_game) = server_state.active_game.as_mut() else {
+                    // If the game isn't active, get out of this loop.
+                    return;
+                };
 
                 match user_message {
-                    UserMessage::InitializeGame {
-                        host_name,
-                        host_pronouns,
-                        session_name,
-                    } => {
-                        // If the game was already initialized, fuck you doin here?
-                        if server_state.active_game.is_some() {
-                            send_message_to_user(
-                                &mut socket,
-                                &ServerMessage::InvalidRequest {
-                                    reason: "Cannot initialize game while one is already running."
-                                        .to_string(),
-                                },
-                            )
-                            .await;
-                            break;
-                        }
+                    UserMessage::StartGame => {
+                        active_game.initiate_game();
 
-                        let game_info: GameInfo =
-                            GameInfo::new(session_name, host_name, host_pronouns);
-
-                        let switch_phase_message = game_info.get_public_game_phase();
-
-                        server_state.active_game = Some(game_info);
-
-                        send_message_to_user(
-                            &mut socket,
-                            &ServerMessage::SwitchPhase(switch_phase_message),
-                        )
-                        .await;
+                        // TODO: Broadcast to everyone that the game started.
                     }
                 }
             }
@@ -103,12 +87,8 @@ async fn handle_user_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex
 #[derive(Deserialize)]
 /// Messages that the users send us throughout program runtime.
 enum UserMessage {
-    /// Message sent by the first person to connect to the client, setting up the basic fundamentals of the session.
-    InitializeGame {
-        session_name: String,
-        host_name: String,
-        host_pronouns: Pronouns,
-    },
+    /// Sent by the host to start the game.
+    StartGame,
 }
 
 async fn send_message_to_user(socket: &mut WebSocket, server_message: &ServerMessage) {
