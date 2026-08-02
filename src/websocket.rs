@@ -4,9 +4,11 @@ use tokio::sync::Mutex;
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Redirect};
 use serde::{Deserialize, Serialize};
+use tower_cookies::Cookies;
 
+use crate::player::PlayerId;
 use crate::state::{GameInfo, GamePhase, ServerMessage};
 use crate::utils::Pronouns;
 use crate::{Player, ServerState};
@@ -15,14 +17,23 @@ use crate::{Player, ServerState};
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(server_state): State<Arc<Mutex<ServerState>>>,
+    cookie_jar: Cookies,
 ) -> impl IntoResponse {
+    // Before we start the websocket upgrade, check if there's a login cookie.
+    let Some(this_user_id): Option<PlayerId> = cookie_jar.get("user_id").and_then(|cookie| cookie.value().parse().ok())
+    else 
+    {
+        return Redirect::to("/login").into_response();
+    };
+
+
     // Finalize upgrading the connection and call the provided callback with the stream.
     ws.on_failed_upgrade(|error| eprintln!("[WEBSOCKET] Error upgrading websocket: {}", error))
-        .on_upgrade(move |socket| handle_socket(socket, server_state))
+        .on_upgrade(move |socket| handle_user_socket(socket, server_state, cookie_jar, this_user_id)).into_response()
 }
 
-// WebSocket: A stream of WebSocket messages.
-async fn handle_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex<ServerState>>) {
+/// Handles the messaging between a logged in user and the game. Assumes the user has already registered!
+async fn handle_user_socket(mut socket: WebSocket, server_state_mutex: Arc<Mutex<ServerState>>, cookie_jar: Cookies, user_id: PlayerId) {
     // Returns `None` if the stream has closed.
     while let Some(msg) = socket.recv().await {
         if let Ok(msg) = msg {

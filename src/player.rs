@@ -1,14 +1,15 @@
 use rand::RngExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::utils::Pronouns;
 use std::collections::HashMap;
 
 pub type PlayerId = u16; // We got like, 25 players tops. This is beyond overkill as is.
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Represents an individual, logged-in player in the current game.
 pub struct Player {
+    #[serde(default)]
     pub id: PlayerId,
     pub name: String,
     pub presentation_title: String,
