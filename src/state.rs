@@ -9,12 +9,24 @@ pub struct ServerState {
     pub active_game: Option<GameInfo>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Presentation {
-    presenter_id: PlayerId,
-    name: String,
-    start_time: chrono::DateTime<chrono::Utc>,
-    end_time: chrono::DateTime<chrono::Utc>,
+    pub presenter_id: PlayerId,
+    pub name: String,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub end_time: chrono::DateTime<chrono::Utc>,
+}
+
+impl Presentation {
+    /// Returns a new presentation for the given user, setting the starting time to now.
+    pub fn start_presentation_now(presenter: &Player) -> Self {
+        Self {
+            presenter_id: presenter.id,
+            name: presenter.presentation_title.clone(),
+            start_time: chrono::Utc::now(),
+            end_time: chrono::Utc::now(), // Garbage value
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -35,7 +47,7 @@ pub struct GameInfo {
     pub broadcast_channel: broadcast::Sender<ServerMessage>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub enum GamePhase {
     /// The game hasn't started yet and players are logging in.
     #[default]
@@ -140,6 +152,8 @@ pub enum ServerMessage {
     InvalidJSON,
     /// The user's fault; the intent was invalid.
     InvalidRequest { reason: String },
+    /// Not the user's fault, I fucked up somehow.
+    InternalServerError { err: String },
 }
 
 impl GamePhase {
