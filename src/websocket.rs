@@ -214,9 +214,25 @@ async fn handle_user_message(
 
     match user_message {
         UserMessage::StartGame => {
+            // If it's not the host, gtfo.
+            if !(user_id == active_game.host_id) {
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                    reason: "Non-host user cannot start match.".to_string(),
+                });
+                return ControlFlow::Continue(());
+            }
+
             active_game.initiate_game();
         }
         UserMessage::SelectPresenter { user_id } => {
+            // If it's not the host, gtfo.
+            if !(user_id == active_game.host_id) {
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                    reason: "Non-host user cannot select presenter.".to_string(),
+                });
+                return ControlFlow::Continue(());
+            }
+
             if active_game.current_phase != GamePhase::SelectPresenter {
                 let _ = personal_channel.send(ServerMessage::InvalidRequest {
                     reason: "Game is not in \"select presenter\" phase".to_string(),
