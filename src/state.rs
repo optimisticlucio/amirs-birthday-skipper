@@ -116,7 +116,7 @@ impl GameInfo {
         match &self.current_phase {
             GamePhase::Setup => PublicGamePhase::Setup {
                 session_name: self.session_name.clone(),
-                connected_players: self.players.into_vec(),
+                connected_players: self.players.to_vec(),
             },
             GamePhase::Results => PublicGamePhase::Results {
                 all_presentations: self.complete_presentations.clone(),

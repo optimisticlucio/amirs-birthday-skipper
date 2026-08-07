@@ -76,7 +76,7 @@ impl PlayerList {
     }
 
     /// Get a vec of all players in the game.
-    pub fn into_vec(&self) -> Vec<Player> {
+    pub fn to_vec(&self) -> Vec<Player> {
         self.players.values().cloned().collect()
     }
 
