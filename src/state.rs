@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tokio::sync::broadcast;
 
 use crate::player::{Player, PlayerId, PlayerList};
@@ -18,14 +20,18 @@ pub struct Presentation {
 }
 
 impl Presentation {
-    /// Returns a new presentation for the given user, setting the starting time to now.
-    pub fn start_presentation_now(presenter: &Player) -> Self {
-        Self {
+    /// Returns a new presentation for the given user, setting the starting time to now. If the user does not have a presentation, returns None.
+    pub fn start_presentation_now(presenter: &Player) -> Option<Self> {
+        let Some(user_presentation_name) = &presenter.presentation_title else {
+            return None;
+        };
+
+        Some(Self {
             presenter_id: presenter.id,
-            name: presenter.presentation_title.clone(),
+            name: user_presentation_name.clone(),
             start_time: chrono::Utc::now(),
             end_time: chrono::Utc::now(), // Garbage value
-        }
+        })
     }
 }
 
@@ -55,7 +61,10 @@ pub enum GamePhase {
     /// The host needs to select who will do the next presentation.
     SelectPresenter,
     /// The presentor is currently presenting their presentation.
-    CurrentlyPresenting { current_presentation: Presentation },
+    CurrentlyPresenting {
+        current_presentation: Presentation,
+        users_who_voted_to_skip: HashSet<PlayerId>,
+    },
     /// The game is fully over and we're letting people look at the results.
     Results,
 }
@@ -74,6 +83,8 @@ pub enum PublicGamePhase {
 
     CurrentlyPresenting {
         presentation: Presentation,
+        players_who_skipped: Vec<Player>,
+        total_players: usize,
     },
 
     Results {
@@ -84,7 +95,7 @@ pub enum PublicGamePhase {
 impl GameInfo {
     pub fn new(session_name: String, host_name: String, host_pronouns: Pronouns) -> Self {
         let mut players = PlayerList::default();
-        let host = players.new_player(host_name, "The Host's Presentation".into(), host_pronouns);
+        let host = players.new_player(host_name, None, host_pronouns);
 
         let (broadcast_channel, _reciever_channel) = broadcast::channel(16);
 
@@ -123,8 +134,14 @@ impl GameInfo {
             },
             GamePhase::CurrentlyPresenting {
                 current_presentation,
+                users_who_voted_to_skip,
             } => PublicGamePhase::CurrentlyPresenting {
                 presentation: current_presentation.clone(),
+                total_players: self.players.size(),
+                players_who_skipped: users_who_voted_to_skip
+                    .iter()
+                    .map(|player_id| self.players.get_player_by_id(player_id).unwrap().to_owned())
+                    .collect(),
             },
             GamePhase::SelectPresenter => PublicGamePhase::SelectPresenter {
                 possible_presenters: self.get_players_who_havent_presented(),
@@ -142,6 +159,32 @@ impl GameInfo {
 
         self.current_phase = GamePhase::SelectPresenter;
     }
+
+    // Ends the current presentation and switches to the appropriate state afterwards. Returns false if the current phase wasn't CurrentlyPresenting and the conversion failed.
+    pub fn end_presentation(&mut self) -> bool {
+        // Is the game over yet?
+        let next_phase: GamePhase = {
+            if self.get_players_who_havent_presented().is_empty() {
+                GamePhase::Results
+            } else {
+                GamePhase::SelectPresenter
+            }
+        };
+
+        let GamePhase::CurrentlyPresenting {
+            mut current_presentation,
+            ..
+        } = std::mem::replace(&mut self.current_phase, next_phase)
+        else {
+            return false;
+        };
+
+        current_presentation.end_time = chrono::Utc::now();
+
+        self.complete_presentations.push(current_presentation);
+
+        true
+    }
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -154,26 +197,4 @@ pub enum ServerMessage {
     InvalidRequest { reason: String },
     /// Not the user's fault, I fucked up somehow.
     InternalServerError { err: String },
-}
-
-impl GamePhase {
-    /// Based on a given message from a user, return the new game state.
-    fn act(&self, game_info: &mut GameInfo) {
-        match self {
-            Self::Setup => {
-                todo!()
-            }
-            Self::SelectPresenter => {
-                todo!()
-            }
-            Self::CurrentlyPresenting {
-                current_presentation,
-            } => {
-                todo!()
-            }
-            Self::Results => {
-                todo!()
-            }
-        }
-    }
 }

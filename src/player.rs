@@ -12,7 +12,7 @@ pub struct Player {
     #[serde(default)]
     pub id: PlayerId,
     pub name: String,
-    pub presentation_title: String,
+    pub presentation_title: Option<String>,
     pub pronouns: Pronouns,
 }
 
@@ -27,7 +27,7 @@ impl Default for Player {
         Player {
             id: 0,
             name: "Default Player".into(),
-            presentation_title: "The Wonders of Debugging".into(),
+            presentation_title: None,
             pronouns: Pronouns::Mixed,
         }
     }
@@ -45,7 +45,7 @@ impl PlayerList {
     pub fn new_player(
         &mut self,
         name: String,
-        presentation_title: String,
+        presentation_title: Option<String>,
         pronouns: Pronouns,
     ) -> Player {
         let mut id;
@@ -82,5 +82,9 @@ impl PlayerList {
 
     pub fn get_all_ids(&self) -> Vec<PlayerId> {
         self.players.keys().cloned().collect()
+    }
+
+    pub fn size(&self) -> usize {
+        self.players.len()
     }
 }

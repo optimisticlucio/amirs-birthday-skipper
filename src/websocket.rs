@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -247,8 +248,13 @@ async fn handle_user_message(
                 return ControlFlow::Continue(());
             };
 
-            let new_presentation: Presentation =
-                Presentation::start_presentation_now(presenting_player);
+            let Some(new_presentation) = Presentation::start_presentation_now(presenting_player)
+            else {
+                let _ = personal_channel.send(ServerMessage::InternalServerError {
+                        err: format!("Chosen presenter does not have a presentation! Presenter chosen has ID {user_id}"),
+                    });
+                return ControlFlow::Continue(());
+            };
 
             active_game
                 .players_who_havent_presented
@@ -256,12 +262,14 @@ async fn handle_user_message(
 
             active_game.current_phase = GamePhase::CurrentlyPresenting {
                 current_presentation: new_presentation,
+                users_who_voted_to_skip: HashSet::new(),
             };
         }
         UserMessage::EndPresentation => {
             // If we're not currently presenting, this message is nonsense.
             let GamePhase::CurrentlyPresenting {
                 ref mut current_presentation,
+                ..
             } = active_game.current_phase
             else {
                 let _ = personal_channel.send(ServerMessage::InvalidRequest {
@@ -278,20 +286,35 @@ async fn handle_user_message(
                 return ControlFlow::Continue(());
             }
 
+            active_game.end_presentation();
+        }
+
+        UserMessage::VoteToSkipPresentation => {
+            // If we're not in a presentation right now what the FUCK are you doing?
             let GamePhase::CurrentlyPresenting {
-                mut current_presentation,
-            } = std::mem::replace(&mut active_game.current_phase, GamePhase::SelectPresenter)
+                ref mut users_who_voted_to_skip,
+                ..
+            } = active_game.current_phase
             else {
-                unreachable!(
-                    "We already determined above that current_phase is CurrentlyPresenting."
-                );
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                    reason: "Cannot vote to skip a presentation when none is active.".to_string(),
+                });
+                return ControlFlow::Continue(());
             };
 
-            current_presentation.end_time = chrono::Utc::now();
+            // Duplication is handled by the hashset.
+            let _ = users_who_voted_to_skip.insert(user_id);
 
-            active_game
-                .complete_presentations
-                .push(current_presentation);
+            // Check if enough people voted to skip that we can do this.
+
+            const PERCENTAGE_TO_SKIP_PRESENTATION: f64 = 0.8;
+
+            let percentage_who_voted_to_skip: f64 =
+                users_who_voted_to_skip.len() as f64 / active_game.players.size() as f64;
+
+            if percentage_who_voted_to_skip >= PERCENTAGE_TO_SKIP_PRESENTATION {
+                active_game.end_presentation();
+            }
         }
     }
 
@@ -314,6 +337,8 @@ enum UserMessage {
     SelectPresenter { user_id: PlayerId },
     /// Sent either by the host or the presentor to end the presentation time.
     EndPresentation,
+    /// Sent by anyone who isn't the presenter, to vote to skip the current presentation. Doesn't actually skip it on its own.
+    VoteToSkipPresentation,
 }
 
 /// Writes a single message out to a user. Returns whether the socket is still usable.

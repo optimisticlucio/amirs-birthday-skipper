@@ -21,7 +21,7 @@ pub async fn login_logic_handler(
     Query(mut passed_user): Query<Player>,
     cookie_jar: Cookies,
 ) -> impl IntoResponse {
-    // TODO: Correct possibly invalid data passed by user.
+    sanitize_player(&mut passed_user);
 
     // TODO: Verify that the user data passed makes sense/is legal.
 
@@ -44,7 +44,9 @@ pub async fn login_logic_handler(
         // The "presentation name" is the session name. It's hacky but fuck it, no one is gonna be maintaining this.
         // If for whatever reason you're maintaining this and reusing this code, dm me and I'll buy you a pizza for the trouble.
         let new_game = GameInfo::new(
-            passed_user.presentation_title,
+            passed_user
+                .presentation_title
+                .unwrap_or("Presentation Night".to_string()),
             passed_user.name,
             passed_user.pronouns,
         );
@@ -61,4 +63,15 @@ pub async fn login_logic_handler(
     cookie_jar.add(host_cookie);
 
     Redirect::to("/")
+}
+
+/// Takes a passed user, and cleans them of any invalid or just off data.
+fn sanitize_player(player: &mut Player) {
+    player.name = player.name.trim().to_owned();
+
+    player.presentation_title = player
+        .presentation_title
+        .as_ref()
+        .map(|title| title.trim().to_owned())
+        .filter(|title| !title.is_empty());
 }
