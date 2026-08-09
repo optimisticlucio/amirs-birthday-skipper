@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Login - Amir's Birthday System</title>
+    <script src="login.js" defer></script>
+    <link rel="stylesheet" href="style.css" type="text/css">
+</head>
+
+<body>
+
+    <h1>התחברות</h1>
+
+    <label for="player-name">שם: <input id="player-name" type="text" /></label>
+
+    <label for="presentation-name">שם מצגת: (אם אין לכם, תשאירו את זה ריק) <input id="presentation-name"
+            type="text" /></label>
+
+    <label for="pronouns">לשון פנייה:</label>
+
+    <select onchange="update_button_pronouns()" id="pronouns">
+        <option value="Mixed" selected>מעורבת (הוא/היא)</option>
+        <option value="Male">זכר (הוא)</option>
+        <option value="Female">נקבה (היא)</option>
+    </select>
+
+    <button id="submit-button" type="button" onclick="submit_data()">התחבר.י</button>
+
+</body>
+
+</html>

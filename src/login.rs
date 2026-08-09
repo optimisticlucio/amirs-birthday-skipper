@@ -1,25 +1,19 @@
 use crate::player::PlayerId;
 use crate::state::GameInfo;
 use crate::{Player, ServerState};
-use axum::extract::{Query, State};
+use axum::Json;
+use axum::extract::State;
 use axum::response::{IntoResponse, Redirect};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_cookies::{Cookie, Cookies};
 
-/// Handles the UI of users logging into the game, and giving them a session cookie.
-pub async fn login_ui_handler(
-    State(server_state): State<Arc<Mutex<ServerState>>>,
-) -> impl IntoResponse {
-    // TODO: Implement login screen.
-}
-
 #[axum::debug_handler]
 /// Handles recieving the user data for logging in users, and giving them back the relevant cookie to log in with.
 pub async fn login_logic_handler(
     State(server_state): State<Arc<Mutex<ServerState>>>,
-    Query(mut passed_user): Query<Player>,
     cookie_jar: Cookies,
+    Json(mut passed_user): Json<Player>,
 ) -> impl IntoResponse {
     sanitize_player(&mut passed_user);
 
@@ -44,11 +38,9 @@ pub async fn login_logic_handler(
         // The "presentation name" is the session name. It's hacky but fuck it, no one is gonna be maintaining this.
         // If for whatever reason you're maintaining this and reusing this code, dm me and I'll buy you a pizza for the trouble.
         let new_game = GameInfo::new(
-            passed_user
-                .presentation_title
-                .unwrap_or("Presentation Night".to_string()),
             passed_user.name,
             passed_user.pronouns,
+            passed_user.presentation_title,
         );
 
         user_id = new_game.host_id;

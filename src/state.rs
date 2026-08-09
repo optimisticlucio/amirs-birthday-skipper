@@ -45,12 +45,12 @@ pub struct GameInfo {
     pub players_who_havent_presented: Vec<PlayerId>,
     /// A list of all presentations complete until now, along with their data.
     pub complete_presentations: Vec<Presentation>,
-    /// The title of the current game, for fun.
-    pub session_name: String,
     /// What phase we're currently in.
     pub current_phase: GamePhase,
     /// Sends updates from other threads about when we should update the clients' presented data. Every websocket should be subscribed to this.
     pub broadcast_channel: broadcast::Sender<ServerMessage>,
+    /// The percentage, set by the host, of how many of the present players need to press skip to skip the presentation.
+    pub skip_percentage: f64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -73,7 +73,6 @@ pub enum GamePhase {
 /// Same as GamePhase, but for when we send data to the users. They don't need to bother with IDs.
 pub enum PublicGamePhase {
     Setup {
-        session_name: String,
         connected_players: Vec<Player>,
     },
 
@@ -93,20 +92,25 @@ pub enum PublicGamePhase {
 }
 
 impl GameInfo {
-    pub fn new(session_name: String, host_name: String, host_pronouns: Pronouns) -> Self {
+    pub fn new(
+        host_name: String,
+        host_pronouns: Pronouns,
+        host_presentation: Option<String>,
+    ) -> Self {
         let mut players = PlayerList::default();
-        let host = players.new_player(host_name, None, host_pronouns);
+        let host = players.new_player(host_name, host_presentation, host_pronouns);
 
         let (broadcast_channel, _reciever_channel) = broadcast::channel(16);
 
         Self {
-            session_name,
             players,
             host_id: host.id,
             players_who_havent_presented: Vec::new(),
             complete_presentations: Vec::new(),
             current_phase: GamePhase::default(),
             broadcast_channel,
+            // The default value of the skip percentage, according to Amir, should be 75%.
+            skip_percentage: 0.75,
         }
     }
 
@@ -126,7 +130,6 @@ impl GameInfo {
     pub fn get_public_game_phase(&self) -> PublicGamePhase {
         match &self.current_phase {
             GamePhase::Setup => PublicGamePhase::Setup {
-                session_name: self.session_name.clone(),
                 connected_players: self.players.to_vec(),
             },
             GamePhase::Results => PublicGamePhase::Results {
@@ -185,6 +188,26 @@ impl GameInfo {
         current_presentation.end_time = chrono::Utc::now();
 
         self.complete_presentations.push(current_presentation);
+
+        true
+    }
+
+    // Checks whether enough players have voted to skip the current presentation, and if so, skips. Returns false if the current phase wasn't CurrentlyPresenting and so this is a nonsense check.
+    pub fn check_for_skip_percentage(&mut self) -> bool {
+        let GamePhase::CurrentlyPresenting {
+            users_who_voted_to_skip,
+            ..
+        } = &self.current_phase
+        else {
+            return false;
+        };
+
+        let percentage_who_voted_to_skip: f64 =
+            users_who_voted_to_skip.len() as f64 / self.players.size() as f64;
+
+        if percentage_who_voted_to_skip >= self.skip_percentage {
+            self.end_presentation();
+        }
 
         true
     }

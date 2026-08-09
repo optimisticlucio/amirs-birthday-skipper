@@ -305,16 +305,21 @@ async fn handle_user_message(
             // Duplication is handled by the hashset.
             let _ = users_who_voted_to_skip.insert(user_id);
 
-            // Check if enough people voted to skip that we can do this.
+            active_game.check_for_skip_percentage();
+        }
 
-            const PERCENTAGE_TO_SKIP_PRESENTATION: f64 = 0.8;
-
-            let percentage_who_voted_to_skip: f64 =
-                users_who_voted_to_skip.len() as f64 / active_game.players.size() as f64;
-
-            if percentage_who_voted_to_skip >= PERCENTAGE_TO_SKIP_PRESENTATION {
-                active_game.end_presentation();
+        UserMessage::ChangeSkipPercentage { new_percentage } => {
+            // If it's not the host, gtfo.
+            if !(user_id == active_game.host_id) {
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                    reason: "Non-host user cannot change skip percentage.".to_string(),
+                });
+                return ControlFlow::Continue(());
             }
+
+            active_game.skip_percentage = new_percentage;
+
+            active_game.check_for_skip_percentage();
         }
     }
 
@@ -334,11 +339,17 @@ enum UserMessage {
     /// Sent by the host to start the game.
     StartGame,
     /// Sent by the host to indicate which player should present next.
-    SelectPresenter { user_id: PlayerId },
+    SelectPresenter {
+        user_id: PlayerId,
+    },
     /// Sent either by the host or the presentor to end the presentation time.
     EndPresentation,
     /// Sent by anyone who isn't the presenter, to vote to skip the current presentation. Doesn't actually skip it on its own.
     VoteToSkipPresentation,
+    // Sent by the host to modify the percentage of players needed to skip the current presentation.
+    ChangeSkipPercentage {
+        new_percentage: f64,
+    },
 }
 
 /// Writes a single message out to a user. Returns whether the socket is still usable.
