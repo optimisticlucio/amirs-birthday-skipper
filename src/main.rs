@@ -12,9 +12,9 @@ async fn main() {
 
     let server_port = env::var("SERVER_PORT").unwrap_or("8080".to_string());
 
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{server_port}"))
+    let listener = tokio::net::TcpListener::bind(format!("[::]:{server_port}"))
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("failed to bind port {server_port}"));
 
     println!("[STARTUP] Server successfully initialized! Starting server.");
 
