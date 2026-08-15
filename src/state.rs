@@ -70,7 +70,9 @@ pub enum GamePhase {
 }
 
 #[derive(Debug, Clone, Serialize)]
-/// Same as GamePhase, but for when we send data to the users. They don't need to bother with IDs.
+/// Same as GamePhase, but for when we send data to the users - whole Players instead of
+/// bare IDs. The IDs still ride along inside them, which is how a client tells whether a
+/// given player is itself.
 pub enum PublicGamePhase {
     Setup {
         connected_players: Vec<Player>,
@@ -215,6 +217,14 @@ impl GameInfo {
 
 #[derive(Clone, Serialize, Debug)]
 pub enum ServerMessage {
+    /// Sent once, right as a client connects, so it knows which of the three UIs to
+    /// draw for itself: host, current presenter, or everyone else. Purely cosmetic -
+    /// every request that actually matters gets its role rechecked server-side.
+    Welcome {
+        your_id: PlayerId,
+        host_id: PlayerId,
+        your_pronouns: Pronouns,
+    },
     /// Notifies the client that we have changed the game state.
     SwitchPhase(PublicGamePhase),
     /// Not the user's fault; the message was invalid.

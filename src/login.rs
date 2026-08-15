@@ -1,5 +1,5 @@
 use crate::player::PlayerId;
-use crate::state::GameInfo;
+use crate::state::{GameInfo, ServerMessage};
 use crate::{Player, ServerState};
 use axum::Json;
 use axum::extract::State;
@@ -46,6 +46,16 @@ pub async fn login_logic_handler(
         user_id = new_game.host_id;
 
         unlocked_server_state.active_game = Some(new_game);
+    }
+
+    // Whoever is already connected is looking at a lobby that just gained a player,
+    // so hand them the new one. This only errors when nobody is subscribed, which is
+    // exactly the case when the host is the one who just logged in.
+    if let Some(active_game) = &unlocked_server_state.active_game {
+        let new_phase = active_game.get_public_game_phase();
+        let _ = active_game
+            .broadcast_channel
+            .send(ServerMessage::SwitchPhase(new_phase));
     }
 
     // Give them the cookie and send them to play the game.

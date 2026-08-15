@@ -26,13 +26,24 @@ pub async fn websocket_handler(
     State(server_state): State<Arc<Mutex<ServerState>>>,
     cookie_jar: Cookies,
 ) -> impl IntoResponse {
-    // Before we start the websocket upgrade, check if there's a login cookie.
+    // Before we start the websocket upgrade, check if there's a valid login cookie.
     let Some(this_user_id): Option<PlayerId> = cookie_jar
         .get("user_id")
         .and_then(|cookie| cookie.value().parse().ok())
     else {
         return Redirect::to("/login").into_response();
     };
+
+    {
+        let server_state = server_state.lock().await;
+        if !server_state
+            .active_game
+            .as_ref()
+            .is_some_and(|game| game.players.get_player_by_id(&this_user_id).is_some())
+        {
+            return Redirect::to("/login").into_response();
+        }
+    }
 
     // Finalize upgrading the connection and call the provided callback with the stream.
     ws.on_failed_upgrade(|error| eprintln!("[WEBSOCKET] Error upgrading websocket: {}", error))
@@ -48,7 +59,7 @@ async fn handle_user_socket(
 ) {
     // Subscribe *before* reading the phase, so that an update landing between the
     // two gets queued up for us rather than lost.
-    let (broadcast_receiver, current_phase) = {
+    let (broadcast_receiver, current_phase, host_id, player_pronouns) = {
         let server_state = server_state_mutex.lock().await;
 
         // If you entered this socket, I am hoping to GOD that the game is ongoing. If it isn't, what are you doing here.
@@ -56,9 +67,20 @@ async fn handle_user_socket(
             return;
         };
 
+        // If you passed an invalid ID, bugger off.
+        let Some(user_pronouns) = active_game
+            .players
+            .get_player_by_id(&user_id)
+            .map(|user| user.pronouns)
+        else {
+            return;
+        };
+
         (
             active_game.broadcast_channel.subscribe(),
             active_game.get_public_game_phase(),
+            active_game.host_id,
+            user_pronouns,
         )
     };
 
@@ -72,7 +94,22 @@ async fn handle_user_socket(
     let (personal_channel, personal_receiver) = mpsc::unbounded_channel();
 
     // A fresh client knows nothing, and the broadcast channel only carries messages
-    // sent from this moment on. Catch them up before anything else.
+    // sent from this moment on. Catch them up before anything else. Who they are has
+    // to land before the first phase, or they'd have to render one without knowing
+    // which parts of it are about them.
+    if !send_message_to_user(
+        &mut socket_writer,
+        &ServerMessage::Welcome {
+            your_id: user_id,
+            host_id,
+            your_pronouns: player_pronouns,
+        },
+    )
+    .await
+    {
+        return;
+    }
+
     if !send_message_to_user(
         &mut socket_writer,
         &ServerMessage::SwitchPhase(current_phase),
@@ -225,7 +262,7 @@ async fn handle_user_message(
 
             active_game.initiate_game();
         }
-        UserMessage::SelectPresenter { user_id } => {
+        UserMessage::SelectPresenter { presenter_id } => {
             // If it's not the host, gtfo.
             if !(user_id == active_game.host_id) {
                 let _ = personal_channel.send(ServerMessage::InvalidRequest {
@@ -241,24 +278,25 @@ async fn handle_user_message(
                 return ControlFlow::Continue(());
             }
 
-            let Some(presenting_player) = active_game.players.get_player_by_id(&user_id) else {
-                let _ = personal_channel.send(ServerMessage::InternalServerError {
-                    err: format!("GamePhase's UserId is invalid: ID is set to {user_id}"),
+            let Some(presenting_player) = active_game.players.get_player_by_id(&presenter_id)
+            else {
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                    reason: format!("No such player to present: ID {presenter_id}"),
                 });
                 return ControlFlow::Continue(());
             };
 
             let Some(new_presentation) = Presentation::start_presentation_now(presenting_player)
             else {
-                let _ = personal_channel.send(ServerMessage::InternalServerError {
-                        err: format!("Chosen presenter does not have a presentation! Presenter chosen has ID {user_id}"),
+                let _ = personal_channel.send(ServerMessage::InvalidRequest {
+                        reason: format!("Chosen presenter does not have a presentation! Presenter chosen has ID {presenter_id}"),
                     });
                 return ControlFlow::Continue(());
             };
 
             active_game
                 .players_who_havent_presented
-                .retain(|&id| id != user_id);
+                .retain(|&id| id != presenter_id);
 
             active_game.current_phase = GamePhase::CurrentlyPresenting {
                 current_presentation: new_presentation,
@@ -338,9 +376,10 @@ async fn handle_user_message(
 enum UserMessage {
     /// Sent by the host to start the game.
     StartGame,
-    /// Sent by the host to indicate which player should present next.
+    /// Sent by the host to indicate which player should present next. This is who was
+    /// picked, never who is asking - the sender is the socket's own user.
     SelectPresenter {
-        user_id: PlayerId,
+        presenter_id: PlayerId,
     },
     /// Sent either by the host or the presentor to end the presentation time.
     EndPresentation,
