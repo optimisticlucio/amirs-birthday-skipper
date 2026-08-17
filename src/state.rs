@@ -80,12 +80,15 @@ pub enum PublicGamePhase {
 
     SelectPresenter {
         possible_presenters: Vec<Player>,
+        skip_percentage: f64,
     },
 
     CurrentlyPresenting {
         presentation: Presentation,
+        presentation_user: Player,
         players_who_skipped: Vec<Player>,
         total_players: usize,
+        skip_percentage: f64,
     },
 
     Results {
@@ -143,13 +146,20 @@ impl GameInfo {
             } => PublicGamePhase::CurrentlyPresenting {
                 presentation: current_presentation.clone(),
                 total_players: self.players.size(),
+                presentation_user: self
+                    .players
+                    .get_player_by_id(&current_presentation.presenter_id)
+                    .unwrap()
+                    .to_owned(),
                 players_who_skipped: users_who_voted_to_skip
                     .iter()
                     .map(|player_id| self.players.get_player_by_id(player_id).unwrap().to_owned())
                     .collect(),
+                skip_percentage: self.skip_percentage,
             },
             GamePhase::SelectPresenter => PublicGamePhase::SelectPresenter {
                 possible_presenters: self.get_players_who_havent_presented(),
+                skip_percentage: self.skip_percentage,
             },
         }
     }

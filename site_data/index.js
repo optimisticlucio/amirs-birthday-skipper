@@ -70,10 +70,13 @@ function handleConnectionClosed(event) {
 // PublicGamePhase is tagged the same way:
 //
 //   { "Setup":               { "connected_players": [Player] } }
-//   { "SelectPresenter":     { "possible_presenters": [Player] } }
+//   { "SelectPresenter":     { "possible_presenters": [Player],
+//                              "skip_percentage": number } }
 //   { "CurrentlyPresenting": { "presentation": Presentation,
+//                              "presentation_user": Player,
 //                              "players_who_skipped": [Player],
-//                              "total_players": number } }
+//                              "total_players": number,
+//                              "skip_percentage": number } }
 //   { "Results":             { "all_presentations": [Presentation] } }
 //
 // Player      = { id: number, name: string,
@@ -130,7 +133,7 @@ function isMe(player) {
 
 /// The server telling us who we are. First thing it sends, once per connection.
 function handleWelcome(yourId, hostId, your_pronouns) {
-    me = { id: yourId, hostId: hostId, your_pronouns: your_pronouns };
+    me = { id: yourId, hostId: hostId, pronouns: your_pronouns };
     console.log(`We are player ${yourId}, with pronouns ${your_pronouns}. Host is ${hostId}.`, amHost() ? "(that's us)" : "");
 }
 
@@ -182,7 +185,9 @@ function handleSwitchPhase(publicGamePhase) {
         return;
     }
 
-    // First, clean index.
+    // First, clean index. The clock, if one is running, points at an element
+    // that's about to be thrown away, so it has to go with it.
+    stopCountdown();
     indexDiv.textContent = '';
 
     switch (tagged.variant) {
@@ -190,13 +195,15 @@ function handleSwitchPhase(publicGamePhase) {
             renderSetup(tagged.payload.connected_players);
             break;
         case "SelectPresenter":
-            renderSelectPresenter(tagged.payload.possible_presenters);
+            renderSelectPresenter(tagged.payload.possible_presenters, tagged.payload.skip_percentage);
             break;
         case "CurrentlyPresenting":
             renderCurrentlyPresenting(
                 tagged.payload.presentation,
+                tagged.payload.presentation_user,
                 tagged.payload.players_who_skipped,
                 tagged.payload.total_players,
+                tagged.payload.skip_percentage
             );
             break;
         case "Results":
@@ -225,7 +232,7 @@ function renderSetup(connectedPlayers) {
 
     if (amHost()) {
         const startGameButton = document.createElement("button");
-        startGameButton.innerText = "התחל משחק";
+        startGameButton.innerText = insertRelevantPronouns("[התחל] משחק");
         startGameButton.onclick = sendStartGame;
         indexDiv.appendChild(startGameButton);
     }
@@ -233,7 +240,7 @@ function renderSetup(connectedPlayers) {
 }
 
 /// The host needs to select who presents next.
-function renderSelectPresenter(possiblePresenters) {
+function renderSelectPresenter(possiblePresenters, skipPercentage) {
     console.log("Phase: SelectPresenter", possiblePresenters);
 
     if (!amHost()) {
@@ -259,13 +266,74 @@ function renderSelectPresenter(possiblePresenters) {
         });
 
         indexDiv.append(titleDiv, ...presentationButtons);
+        indexDiv.appendChild(createSkipPercentageBar(skipPercentage));
     }
 }
 
 /// Someone is presenting right now.
-function renderCurrentlyPresenting(presentation, playersWhoSkipped, totalPlayers) {
-    // TODO
+function renderCurrentlyPresenting(presentation, presentationUser, playersWhoSkipped, totalPlayers, skipPercentage) {
     console.log("Phase: CurrentlyPresenting", presentation, playersWhoSkipped, totalPlayers);
+
+    const countdownElement = document.createElement("span");
+    startCountdown(countdownElement, presentation.start_time);
+
+    const countdownTextWrapper = document.createElement("p");
+    countdownTextWrapper.innerText = "אורך מצגת נוכחי: ";
+
+    const countdownClockDiv = document.createElement("div");
+    countdownClockDiv.append(countdownTextWrapper, countdownElement);
+
+    const skipPresentationButton = document.createElement("button");
+    skipPresentationButton.type = "button";
+    skipPresentationButton.innerText = insertRelevantPronouns("[סיים] את המצגת!");
+    skipPresentationButton.onclick = sendEndPresentation;
+
+    if (amPresenter(presentation)) {
+        const stopLookingText = document.createElement("h1");
+        stopLookingText.innerText = insertRelevantPronouns("[תעיף] את הראש מהטלפון!");
+
+        const subtitleText = document.createElement("h2");
+        subtitleText.innerText = "אנשים מקשיבים למצגת שלך!"
+
+        const shutUpAlreadyCounter = document.createElement("p");
+        if (playersWhoSkipped.length == 0) {
+            shutUpAlreadyCounter.innerText = `בנתיים לא הצביעו להעביר את המצגת.`;
+        } else if (playersWhoSkipped.length == 1) {
+            shutUpAlreadyCounter.innerText = `מישהו הצביע להעביר את המצגת.`;
+        } else {
+            shutUpAlreadyCounter.innerText = `${playersWhoSkipped.length} אנשים הצביעו להעביר את המצגת.`;
+        }
+
+        indexDiv.append(stopLookingText, subtitleText, countdownClockDiv, shutUpAlreadyCounter, skipPresentationButton);
+    } else {
+        const skipButton = document.createElement("button");
+        skipButton.type = "button";
+        skipButton.classList.add("skipButton");
+
+        if (playersWhoSkipped.some((player) => isMe(player))) {
+            skipButton.classList.add("active");
+            skipButton.innerText = insertRelevantPronouns("האמת, אולי יש [לו] משהו להגיד...", presentationUser.pronouns);
+            skipButton.onclick = () => sendSkipDecision(false);
+        } else {
+            skipButton.innerText = insertRelevantPronouns("[תגיד] ") + insertRelevantPronouns("[לו] ש[ישתוק]!", presentationUser.pronouns);
+            skipButton.onclick = () => sendSkipDecision(true);
+        }
+
+
+        const totalSkippersDiv = document.createElement("div");
+        totalSkippersDiv.innerText = `כרגע ${playersWhoSkipped.length} מתוך ${totalPlayers} רוצים להסיים את המצגת`;
+
+        const presentationTitle = document.createElement("h1");
+        presentationTitle.innerText = presentation.name;
+
+
+        indexDiv.append(presentationTitle, totalSkippersDiv, skipButton);
+
+        if (amHost()) {
+            indexDiv.appendChild(createSkipPercentageBar(skipPercentage));
+            indexDiv.appendChild(skipPresentationButton);
+        }
+    }
 }
 
 /// The game is over and we're showing off what happened.
@@ -292,6 +360,26 @@ function handleInvalidRequest(reason) {
 function handleInternalServerError(err) {
     // TODO: surface to the user
     console.log(`Internal server error: ${err}`);
+}
+
+// Returns an HTML object for the host, which is a bar that allows them to send changes to the minimal percent to skip the presentation.
+function createSkipPercentageBar(currentSkipPercentage = 0.8) {
+    const skipPercentageBarSection = document.createElement("div");
+
+    const rangeBar = document.createElement("input");
+    rangeBar.type = "range";
+    rangeBar.min = 0;
+    rangeBar.max = 1;
+    rangeBar.step = 0.01;
+    rangeBar.defaultValue = currentSkipPercentage;
+    rangeBar.onchange = (event) => sendChangeSkipPercentage(event.target.value);
+
+    const textExplanation = document.createElement("p");
+    textExplanation.innerText = `Change the bar to change the percentage required for a presentation to be skipped. Currently at: ${currentSkipPercentage * 100}%`;
+
+    skipPercentageBarSection.append(rangeBar, textExplanation);
+
+    return skipPercentageBarSection;
 }
 
 // --- Outgoing: UserMessage --------------------------------------------------
@@ -322,31 +410,94 @@ function sendEndPresentation() {
     sendUserMessage("EndPresentation");
 }
 
-/// Anyone. Votes to skip the current presentation; doesn't skip it on its own.
-function sendVoteToSkipPresentation() {
-    sendUserMessage("VoteToSkipPresentation");
+/// Anyone. Changes the stance on presentation skipping; doesn't skip it on its own.
+function sendSkipDecision(whetherToSkip = true) {
+    sendUserMessage({ ChangePresentationSkipStance: { want_to_skip: whetherToSkip } });
 }
 
 /// Host only. `newPercentage` is a fraction, not a percent - 0.75 means 75%.
 function sendChangeSkipPercentage(newPercentage) {
-    sendUserMessage({ ChangeSkipPercentage: { new_percentage: newPercentage } });
+    sendUserMessage({ ChangeSkipPercentage: { new_percentage: parseFloat(newPercentage) } });
 }
 
 
+/// How long a presentation ran, in whole seconds. Takes the two RFC 3339 strings
+/// the server puts on a Presentation. Returns null if either one doesn't parse.
+///
+/// Note that a presentation still in progress carries a placeholder `end_time`,
+/// so this is only meaningful once the presentation has actually ended.
+function presentationDurationInSeconds(startTime, endTime) {
+    const start = Date.parse(startTime);
+    const end = Date.parse(endTime);
+
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+        console.log(`Couldn't parse presentation times: "${startTime}" - "${endTime}"`);
+        return null;
+    }
+
+    return Math.round((end - start) / 1000);
+}
+
+/// Seconds as MM:SS. Minutes keep counting up past two digits rather than
+/// wrapping, so an hour-long presentation reads 63:07 instead of starting over.
+function formatAsMinutesAndSeconds(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/// The interval driving the on-screen presentation clock, if one is running.
+/// Only ever one at a time - a phase switch stops the old one before the new
+/// render gets a chance to start another.
+let countdownIntervalId = null;
+
+/// Updates `element` once a second with how long it's been since `startTime`,
+/// the RFC 3339 string the server puts on a Presentation.
+function startCountdown(element, startTime) {
+    const start = Date.parse(startTime);
+
+    if (Number.isNaN(start)) {
+        console.log(`Couldn't parse presentation start time: "${startTime}"`);
+        element.innerText = "--:--";
+        return;
+    }
+
+    const tick = () => {
+        // Our clock and the server's don't have to agree. If ours is behind, the
+        // elapsed time comes out negative for the first seconds of a
+        // presentation, and 00:00 is a friendlier lie than -00:03.
+        const elapsedSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
+        element.innerText = formatAsMinutesAndSeconds(elapsedSeconds);
+    };
+
+    stopCountdown();
+    tick(); // The first interval tick is a second away; don't show an empty clock until then.
+    countdownIntervalId = setInterval(tick, 1000);
+}
+
+/// Stops the running clock, if there is one. Safe to call when there isn't.
+function stopCountdown() {
+    if (countdownIntervalId === null) {
+        return;
+    }
+
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+}
+
 /// Given a string, returns one where all the gendered words marked with [] have been replaced with the appropriate ones from this dictionary.
-function insertRelevantPronouns(phrase) {
+function insertRelevantPronouns(phrase, userPronouns = me.pronouns) {
     return phrase.replace(/\[([^\]\n]+)\]/g, (_, word) => translateWord(word));
 
 
     /// Assumes the passed string is male gendered. If the string has no replacement, returns ""
     function translateWord(genderedWord) {
-
-        console.log(`word passed is ${genderedWord}`)
         // For convenience, mixed are 0 index, male are 1, female are 2
-        const pronounIndex = 0;
-        if (self.pronouns == "Male") {
+        let pronounIndex = 0;
+        if (userPronouns == "Male") {
             pronounIndex = 1;
-        } else if (self.pronouns == "Female") {
+        } else if (userPronouns == "Female") {
             pronounIndex = 2;
         }
 
@@ -354,7 +505,12 @@ function insertRelevantPronouns(phrase) {
             "חכה": ["חכה.י", "חכה", "חכי"],
             "התחל": ["התחל.י", "התחל", "התחלי"],
             "מובן": ["מוכנ.ה", "מוכן", "מוכנה"],
-            "בחר": ["בחר.י", "בחר", "בחרי"]
+            "בחר": ["בחר.י", "בחר", "בחרי"],
+            "תעיף": ["תעיפ.י", "תעיף", "תעיפי"],
+            "תגיד": ["תגיד.י", "תגיד", "תגידי"],
+            "לו": ["להם", "לו", "לה"],
+            "ישתוק": ["ת.ישתוק", "ישתוק", "תשתוק"],
+            "סיים": ["סיימ.י", "סיים", "סיימי"]
         }
 
         const relevantWord = translationDictionary[genderedWord];

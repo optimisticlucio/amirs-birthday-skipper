@@ -327,7 +327,7 @@ async fn handle_user_message(
             active_game.end_presentation();
         }
 
-        UserMessage::VoteToSkipPresentation => {
+        UserMessage::ChangePresentationSkipStance { want_to_skip } => {
             // If we're not in a presentation right now what the FUCK are you doing?
             let GamePhase::CurrentlyPresenting {
                 ref mut users_who_voted_to_skip,
@@ -341,7 +341,11 @@ async fn handle_user_message(
             };
 
             // Duplication is handled by the hashset.
-            let _ = users_who_voted_to_skip.insert(user_id);
+            if want_to_skip {
+                let _ = users_who_voted_to_skip.insert(user_id);
+            } else {
+                let _ = users_who_voted_to_skip.remove(&user_id);
+            }
 
             active_game.check_for_skip_percentage();
         }
@@ -383,8 +387,10 @@ enum UserMessage {
     },
     /// Sent either by the host or the presentor to end the presentation time.
     EndPresentation,
-    /// Sent by anyone who isn't the presenter, to vote to skip the current presentation. Doesn't actually skip it on its own.
-    VoteToSkipPresentation,
+    /// Sent by anyone who isn't the presenter, to set their vote to skip the presentation for or against. Doesn't actually skip it on its own.
+    ChangePresentationSkipStance {
+        want_to_skip: bool,
+    },
     // Sent by the host to modify the percentage of players needed to skip the current presentation.
     ChangeSkipPercentage {
         new_percentage: f64,
