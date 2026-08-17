@@ -84,16 +84,22 @@ pub enum PublicGamePhase {
     },
 
     CurrentlyPresenting {
-        presentation: Presentation,
-        presentation_user: Player,
+        presentation: PublicPresentation,
         players_who_skipped: Vec<Player>,
         total_players: usize,
         skip_percentage: f64,
     },
 
     Results {
-        all_presentations: Vec<Presentation>,
+        all_presentations: Vec<PublicPresentation>,
     },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicPresentation {
+    #[serde(flatten)]
+    base: Presentation,
+    presenter_data: Player,
 }
 
 impl GameInfo {
@@ -138,19 +144,32 @@ impl GameInfo {
                 connected_players: self.players.to_vec(),
             },
             GamePhase::Results => PublicGamePhase::Results {
-                all_presentations: self.complete_presentations.clone(),
+                all_presentations: self
+                    .complete_presentations
+                    .iter()
+                    .map(|presentation| PublicPresentation {
+                        base: presentation.to_owned(),
+                        presenter_data: self
+                            .players
+                            .get_player_by_id(&presentation.presenter_id)
+                            .unwrap()
+                            .clone(),
+                    })
+                    .collect(),
             },
             GamePhase::CurrentlyPresenting {
                 current_presentation,
                 users_who_voted_to_skip,
             } => PublicGamePhase::CurrentlyPresenting {
-                presentation: current_presentation.clone(),
+                presentation: PublicPresentation {
+                    base: current_presentation.to_owned(),
+                    presenter_data: self
+                        .players
+                        .get_player_by_id(&current_presentation.presenter_id)
+                        .unwrap()
+                        .clone(),
+                },
                 total_players: self.players.size(),
-                presentation_user: self
-                    .players
-                    .get_player_by_id(&current_presentation.presenter_id)
-                    .unwrap()
-                    .to_owned(),
                 players_who_skipped: users_who_voted_to_skip
                     .iter()
                     .map(|player_id| self.players.get_player_by_id(player_id).unwrap().to_owned())

@@ -73,7 +73,6 @@ function handleConnectionClosed(event) {
 //   { "SelectPresenter":     { "possible_presenters": [Player],
 //                              "skip_percentage": number } }
 //   { "CurrentlyPresenting": { "presentation": Presentation,
-//                              "presentation_user": Player,
 //                              "players_who_skipped": [Player],
 //                              "total_players": number,
 //                              "skip_percentage": number } }
@@ -82,7 +81,7 @@ function handleConnectionClosed(event) {
 // Player      = { id: number, name: string,
 //                 presentation_title: string | null,
 //                 pronouns: "Male" | "Female" | "Mixed" }
-// Presentation = { presenter_id: number, name: string,
+// Presentation = { presenter_id: number, name: string, presenter_data: Player,
 //                  start_time: string, end_time: string }  // RFC 3339 UTC
 
 /// Splits an externally tagged enum into its variant name and payload.
@@ -200,7 +199,7 @@ function handleSwitchPhase(publicGamePhase) {
         case "CurrentlyPresenting":
             renderCurrentlyPresenting(
                 tagged.payload.presentation,
-                tagged.payload.presentation_user,
+                tagged.payload.presentation.presenter_data,
                 tagged.payload.players_who_skipped,
                 tagged.payload.total_players,
                 tagged.payload.skip_percentage
@@ -327,7 +326,7 @@ function renderCurrentlyPresenting(presentation, presentationUser, playersWhoSki
         presentationTitle.innerText = presentation.name;
 
 
-        indexDiv.append(presentationTitle, totalSkippersDiv, skipButton);
+        indexDiv.append(presentationTitle, countdownClockDiv, totalSkippersDiv, skipButton);
 
         if (amHost()) {
             indexDiv.appendChild(createSkipPercentageBar(skipPercentage));
@@ -338,8 +337,32 @@ function renderCurrentlyPresenting(presentation, presentationUser, playersWhoSki
 
 /// The game is over and we're showing off what happened.
 function renderResults(allPresentations) {
-    // TODO
     console.log("Phase: Results", allPresentations);
+
+    const titleElement = document.createElement("h1");
+    titleElement.innerText = "וזהו! סיימנו את המצגות!";
+
+    const subtitle = document.createElement("h2");
+    subtitle.innerText = "המצגות שהיו לנו היום, מקצרה לארוכה, הן:";
+
+    const presentationsWithTime = allPresentations.map((presentation) => {
+        presentation.length = presentationDurationInSeconds(presentation.start_time, presentation.end_time) ?? 0;
+        presentation.lengthReadable = formatAsMinutesAndSeconds(presentation.length);
+
+        return presentation;
+    });
+
+    presentationsWithTime.sort((presentation, presentation2) => presentation.length - presentation2.length);
+
+    const infoOnPresentations = presentationsWithTime.map((presentation) => {
+        const presentationDiv = document.createElement("div");
+
+        presentationDiv.innerHTML = insertRelevantPronouns(`<b>${presentation.presenter_data.name}</b> [הציג] על <b>${presentation.name}</b> למשך <b>${presentation.lengthReadable}</b>`, presentation.presenter_data.pronouns);
+
+        return presentationDiv;
+    });
+
+    indexDiv.append(titleElement, subtitle, ...infoOnPresentations);
 }
 
 /// We sent the server something it couldn't parse. The server closes the socket
@@ -375,7 +398,7 @@ function createSkipPercentageBar(currentSkipPercentage = 0.8) {
     rangeBar.onchange = (event) => sendChangeSkipPercentage(event.target.value);
 
     const textExplanation = document.createElement("p");
-    textExplanation.innerText = `Change the bar to change the percentage required for a presentation to be skipped. Currently at: ${currentSkipPercentage * 100}%`;
+    textExplanation.innerText = insertRelevantPronouns(`[תשנה] את הערך של הבר בשביל לשנות את אחוז ההצבעה בשביל להעביר, כרגע האחוז הוא: ${currentSkipPercentage * 100}%`);
 
     skipPercentageBarSection.append(rangeBar, textExplanation);
 
@@ -510,7 +533,9 @@ function insertRelevantPronouns(phrase, userPronouns = me.pronouns) {
             "תגיד": ["תגיד.י", "תגיד", "תגידי"],
             "לו": ["להם", "לו", "לה"],
             "ישתוק": ["ת.ישתוק", "ישתוק", "תשתוק"],
-            "סיים": ["סיימ.י", "סיים", "סיימי"]
+            "סיים": ["סיימ.י", "סיים", "סיימי"],
+            "הציג": ["הציג.ה", "הציג", "הציגה"],
+            "תשנה": ["תשנה.י", "תשנה", "תשני"]
         }
 
         const relevantWord = translationDictionary[genderedWord];
