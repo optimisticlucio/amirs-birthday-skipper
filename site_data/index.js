@@ -42,6 +42,11 @@ ws.onerror = () => {
     console.log(`Failed connecting to game server! Unknown error.`);
 };
 
+/// Created up here, rather than when a skip happens, so it's downloaded and
+/// ready long before the one second of warning the server gives us.
+const skipSoundEffect = new Audio("/boo-you-stink.mp3");
+skipSoundEffect.preload = "auto";
+
 /// Something went wrong on an already-established connection. A `close` follows
 /// this, so the cleanup belongs there, not here.
 function handleConnectionError() {
@@ -66,6 +71,7 @@ function handleConnectionClosed(event) {
 //   { "InvalidRequest": { "reason": "..." } }
 //   { "InternalServerError": { "err": "..." } }
 //   { "SwitchPhase": <PublicGamePhase> }
+//   { "PlaySkipSoundEffect": { "time_to_play": string // RFC 3339 UTC } }
 //
 // PublicGamePhase is tagged the same way:
 //
@@ -169,6 +175,9 @@ function handleServerMessage(event) {
             break;
         case "InternalServerError":
             handleInternalServerError(tagged.payload.err);
+            break;
+        case "PlaySkipSoundEffect":
+            handlePlaySkipSoundEffect(tagged.payload.time_to_play);
             break;
         default:
             console.log(`Unknown ServerMessage variant: ${tagged.variant}`);
@@ -383,6 +392,35 @@ function handleInvalidRequest(reason) {
 function handleInternalServerError(err) {
     // TODO: surface to the user
     console.log(`Internal server error: ${err}`);
+}
+
+/// Someone got skipped, and the whole room should hear the boo at the same
+/// moment. A message that shows up after that moment has nothing left to
+/// coordinate with, so it's dropped rather than played late and alone.
+///
+/// This trusts our clock to agree with the server's, same as the countdown does.
+function handlePlaySkipSoundEffect(timeToPlay) {
+    const playAt = Date.parse(timeToPlay);
+
+    if (Number.isNaN(playAt)) {
+        console.log(`Couldn't parse skip sound effect time: "${timeToPlay}"`);
+        return;
+    }
+
+    const millisecondsUntilPlay = playAt - Date.now();
+
+    if (millisecondsUntilPlay < 0) {
+        console.log(`Skip sound effect arrived ${-millisecondsUntilPlay}ms too late; ignoring it.`);
+        return;
+    }
+
+    setTimeout(() => {
+        skipSoundEffect.currentTime = 0;
+        // Browsers refuse to autoplay until the page has been interacted with.
+        skipSoundEffect.play().catch((err) => {
+            console.log(`Couldn't play skip sound effect: ${err}`);
+        });
+    }, millisecondsUntilPlay);
 }
 
 // Returns an HTML object for the host, which is a bar that allows them to send changes to the minimal percent to skip the presentation.

@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use chrono::Utc;
 use tokio::sync::broadcast;
 
 use crate::player::{Player, PlayerId, PlayerList};
@@ -197,6 +198,25 @@ impl GameInfo {
         self.current_phase = GamePhase::SelectPresenter;
     }
 
+    // Runs end_presentation, and sends the "player was skipped" message to the clients. Returns false if the current phase wasn't CurrentlyPresenting and the conversion failed.
+    pub fn skip_presentation(&mut self) -> bool {
+        let time_to_play_sfx = Utc::now()
+            .checked_add_signed(chrono::TimeDelta::seconds(1))
+            .unwrap();
+
+        if self.end_presentation() {
+            let _ = self
+                .broadcast_channel
+                .send(ServerMessage::PlaySkipSoundEffect {
+                    time_to_play: time_to_play_sfx,
+                });
+
+            true
+        } else {
+            false
+        }
+    }
+
     // Ends the current presentation and switches to the appropriate state afterwards. Returns false if the current phase wasn't CurrentlyPresenting and the conversion failed.
     pub fn end_presentation(&mut self) -> bool {
         // Is the game over yet?
@@ -237,7 +257,7 @@ impl GameInfo {
             users_who_voted_to_skip.len() as f64 / self.players.size() as f64;
 
         if percentage_who_voted_to_skip >= self.skip_percentage {
-            self.end_presentation();
+            self.skip_presentation();
         }
 
         true
@@ -262,4 +282,9 @@ pub enum ServerMessage {
     InvalidRequest { reason: String },
     /// Not the user's fault, I fucked up somehow.
     InternalServerError { err: String },
+    /// Sends a request to the user to play the "user was skipped" at a specific UTC time.
+    /// We pass the UTC time so the sound effects are roughly coordinated across different clients despite download speeds.
+    PlaySkipSoundEffect {
+        time_to_play: chrono::DateTime<chrono::Utc>,
+    },
 }
