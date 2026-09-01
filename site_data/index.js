@@ -434,9 +434,13 @@ function createSkipPercentageBar(currentSkipPercentage = 0.8) {
     rangeBar.step = 0.01;
     rangeBar.defaultValue = currentSkipPercentage;
     rangeBar.onchange = (event) => sendChangeSkipPercentage(event.target.value);
+    rangeBar.oninput = (event) => {
+        const barPercent = document.getElementById("currentBarValue");
+        barPercent.innerText = event.target.value * 100;
+    };
 
     const textExplanation = document.createElement("p");
-    textExplanation.innerText = insertRelevantPronouns(`[תשנה] את הערך של הבר בשביל לשנות את אחוז ההצבעה בשביל להעביר, כרגע האחוז הוא: ${currentSkipPercentage * 100}%`);
+    textExplanation.innerHtml = insertRelevantPronouns(`[תשנה] את הערך של הבר בשביל לשנות את אחוז ההצבעה בשביל להעביר, כרגע האחוז הוא:`) + `<span id="currentBarValue">${currentSkipPercentage * 100}</span>%`;
 
     skipPercentageBarSection.append(rangeBar, textExplanation);
 

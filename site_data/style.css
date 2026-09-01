@@ -8,8 +8,9 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    height: 99vh;
     width: 100vw;
+    font-size: 30px;
 }
 
 * {
