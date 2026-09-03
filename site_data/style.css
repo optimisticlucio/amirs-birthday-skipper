@@ -22,6 +22,7 @@ body {
     border-radius: 50%;
     padding: 1em;
     aspect-ratio: 1/1;
+    margin: 1em;
 
     color: white;
     background-color: rgb(158, 101, 101);
