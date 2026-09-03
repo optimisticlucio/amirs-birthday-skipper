@@ -438,7 +438,7 @@ function createSkipPercentageBar(currentSkipPercentage = 0.8) {
     rangeBar.defaultValue = currentSkipPercentage;
     rangeBar.onchange = (event) => sendChangeSkipPercentage(event.target.value);
     rangeBar.oninput = (event) => {
-        barPercent.innerText = event.target.value * 100 + "%";
+        barPercent.innerText = Math.round(event.target.value * 100) + "%";
     };
 
     const textExplanation = document.createElement("p");
