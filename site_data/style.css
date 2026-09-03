@@ -10,7 +10,7 @@ body {
     align-items: center;
     height: 99vh;
     width: 100vw;
-    font-size: 30px;
+    font-size: 55px;
 }
 
 * {
@@ -25,4 +25,12 @@ body {
         color: white;
         background-color: black;
     }
+}
+
+input {
+    font-size: 1em;
+}
+
+button {
+    font-size: 1.5em;
 }

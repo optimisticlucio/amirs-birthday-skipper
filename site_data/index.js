@@ -427,6 +427,9 @@ function handlePlaySkipSoundEffect(timeToPlay) {
 function createSkipPercentageBar(currentSkipPercentage = 0.8) {
     const skipPercentageBarSection = document.createElement("div");
 
+    const barPercent = document.createElement("span");
+    barPercent.innerText = currentSkipPercentage * 100;
+
     const rangeBar = document.createElement("input");
     rangeBar.type = "range";
     rangeBar.min = 0;
@@ -435,12 +438,13 @@ function createSkipPercentageBar(currentSkipPercentage = 0.8) {
     rangeBar.defaultValue = currentSkipPercentage;
     rangeBar.onchange = (event) => sendChangeSkipPercentage(event.target.value);
     rangeBar.oninput = (event) => {
-        const barPercent = document.getElementById("currentBarValue");
-        barPercent.innerText = event.target.value * 100;
+        barPercent.innerText = event.target.value * 100 + "%";
     };
 
     const textExplanation = document.createElement("p");
-    textExplanation.innerHtml = insertRelevantPronouns(`[תשנה] את הערך של הבר בשביל לשנות את אחוז ההצבעה בשביל להעביר, כרגע האחוז הוא:`) + `<span id="currentBarValue">${currentSkipPercentage * 100}</span>%`;
+
+    textExplanation.innerText = insertRelevantPronouns(`[תשנה] את הערך של הבר בשביל לשנות את אחוז ההצבעה בשביל להעביר, כרגע האחוז הוא:`);
+    textExplanation.appendChild(barPercent);
 
     skipPercentageBarSection.append(rangeBar, textExplanation);
 
