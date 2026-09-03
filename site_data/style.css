@@ -5,12 +5,13 @@
 body {
     display: flex;
     margin: 0;
+    padding: 1ch;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     height: 99vh;
     width: 100vw;
-    font-size: 55px;
+    font-size: 45px;
 }
 
 * {
@@ -37,4 +38,11 @@ input,
 select,
 button {
     font-size: 1em;
+}
+
+/*God ranges suck.*/
+
+input[type="range"] {
+    zoom: 2;
+    width: 100%
 }

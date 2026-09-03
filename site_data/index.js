@@ -329,7 +329,7 @@ function renderCurrentlyPresenting(presentation, presentationUser, playersWhoSki
 
 
         const totalSkippersDiv = document.createElement("div");
-        totalSkippersDiv.innerText = `כרגע ${playersWhoSkipped.length} מתוך ${totalPlayers} רוצים להסיים את המצגת`;
+        totalSkippersDiv.innerText = `כרגע ${playersWhoSkipped.length} מתוך ${totalPlayers} רוצים לסיים את המצגת`;
 
         const presentationTitle = document.createElement("h1");
         presentationTitle.innerText = presentation.name;
